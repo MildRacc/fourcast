@@ -90,7 +90,8 @@ impl LSTM {
         self.activationFunc = match conf.activation_function {
             Functions::ReLu => &matrix_functions::ReLu_Mat,
             Functions::LReLu => &matrix_functions::LReLu_Mat,
-            Functions::Sigmoid => &matrix_functions::Sigmoid_Mat,
+            Functions::Logistic => &matrix_functions::Logistic_Mat,
+            Functions::Logistic_Approx_16 => &matrix_functions::Logistic_Approx_16_Mat,
             Functions::Tanh => &matrix_functions::Tanh_Mat,
             Functions::Linear => &matrix_functions::Linear_Mat
         };
@@ -158,7 +159,8 @@ pub enum Functions
 {
     ReLu,
     LReLu,
-    Sigmoid,
+    Logistic,
+    Logistic_Approx_16,
     Tanh,
     Linear,
 }
@@ -189,16 +191,26 @@ mod matrix_functions{
         }
     }
     
-    pub fn Sigmoid_Mat(x: &mut Array2<f32>)
+    pub fn Logistic_Mat(x: &mut Array2<f32>)
     {
         let iter = x.iter_mut();
     
         for value in iter
         {
-            reg_functions::Sigmoid(value);
+            reg_functions::Logistic(value);
         }
     }
     
+    pub fn Logistic_Approx_16_Mat(x: &mut Array2<f32>)
+    {
+        let iter = x.iter_mut();
+    
+        for value in iter
+        {
+            reg_functions::Logistic_Approx_16_Mat(value);
+        }
+    }
+
     pub fn Tanh_Mat(x: &mut Array2<f32>)
     {
         let iter = x.iter_mut();
@@ -213,7 +225,7 @@ mod matrix_functions{
 }
 
 mod reg_functions {
-    use std::f32::consts::E;
+    use std::{f32::consts::E};
 
     #[allow(unused_assignments)]
     pub fn ReLu(x: &mut f32)
@@ -228,15 +240,21 @@ mod reg_functions {
     }
 
     #[allow(unused_assignments)]
-    pub fn Tanh(x: &mut f32)
+    pub fn Logistic(x: &mut f32)
     {
-        *x = x.tanh();
+        *x = 1.0 / (1.0 + E.powf(-*x));
     }
 
     #[allow(unused_assignments)]
-    pub fn Sigmoid(x: &mut f32)
+    pub fn Logistic_Approx_16_Mat(x: &mut f32)
     {
-        *x = 1.0 / (1.0 + E.powf(-*x));
+        *x = 1.0/(1.0 + (1.0 - f32::powi(*x / 16.0, 16)));
+    }
+
+    #[allow(unused_assignments)]
+    pub fn Tanh(x: &mut f32)
+    {
+        *x = x.tanh();
     }
 
     pub fn Linear(_x: &mut f32){}

@@ -7,7 +7,7 @@ fn main() {
 
     let config = fourcast::ModelConfig
     {
-        activation_function: fourcast::Functions::Sigmoid,
+        activation_function: fourcast::Functions::Logistic,
         hidden_layers: 64,
         input_size: 16,
         input_shape: 4,

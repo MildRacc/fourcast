@@ -55,6 +55,8 @@ pub struct LSTM {
     hiddenSize: usize,
     batchSize: usize,
 
+    epochs: usize,
+
     cells: Vec<GruCell>,
 
     isConfigured: bool
@@ -75,6 +77,8 @@ impl LSTM {
             outputSize: 0,
             hiddenSize: 0,
             batchSize: 0,
+
+            epochs: 0,
 
             cells: Vec::new(),
 
@@ -98,11 +102,13 @@ impl LSTM {
 
         self.hiddenLayers = conf.hidden_layers;
         self.inputSize = conf.input_size;
+        self.inputShape = conf.input_shape;
         self.outputSize = conf.output_size;
         self.hiddenSize = conf.hidden_size;
         self.batchSize = conf.batch_size;
+        self.epochs = conf.num_epochs;
 
-        
+        // Freak out if configuration is bad
         if self.hiddenLayers == 0 || self.inputSize == 0 || self.outputSize == 0 || self.hiddenSize == 0 || self.batchSize == 0
         {
             println!("ERROR: The following parameters can NOT be equal to zero: Hidden Layers, Input Size, Output Size, Hidden Size, Batch Size");
@@ -110,6 +116,7 @@ impl LSTM {
             return false;
         }
 
+        // Populate model with cells
         for _i in 0..self.hiddenLayers
         {
             let newCell = GruCell::new(self.hiddenSize, self.inputShape);
@@ -129,6 +136,11 @@ impl LSTM {
         }
 
 
+        // Actual training begins here
+        for i in 0..self.epochs
+        {
+
+        }
 
         println!("Training Successful");
     }
@@ -149,7 +161,7 @@ pub struct ModelConfig
     pub hidden_size: usize,
     pub batch_size: usize,
 
-    pub num_epochs: i32
+    pub num_epochs: usize
     
 }
 

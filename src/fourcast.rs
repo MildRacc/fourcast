@@ -1,11 +1,10 @@
 #![allow(non_snake_case)]
 
-use std::cell;
 
 use ndarray::{Array1, Array2};
 use rand::{random_range};
 
-pub struct Cell {
+pub struct GruCell {
     w_ih: Array2<f32>,
     w_hh: Array2<f32>,
     b_ih: Array1<f32>,
@@ -14,8 +13,8 @@ pub struct Cell {
     h_t: Array2<f32>
 }
 
-impl Cell {
-    pub fn new(hidden_size: usize, input_shape: usize) -> Cell
+impl GruCell {
+    pub fn new(hidden_size: usize, input_shape: usize) -> GruCell
     {
 
         // Weights
@@ -50,6 +49,13 @@ pub struct LSTM {
 
     hiddenLayers: i32,
 
+    inputSize: usize,
+    outputSize: usize,
+    hiddenSize: usize,
+    batchSize: usize,
+
+    cells: Vec<GruCell>,
+
     isConfigured: bool
 }
 
@@ -62,22 +68,49 @@ impl LSTM {
         Self {
             activationFunc: &matrix_functions::Linear_Mat,
             hiddenLayers: 0,
+
+            inputSize: 0,
+            outputSize: 0,
+            hiddenSize: 0,
+            batchSize: 0,
+
+            cells: Vec::new(),
+
             isConfigured: false
         }
     }
 
 
 
-    pub fn configure(&self, conf: ModelConfig)
+    pub fn configure(&mut self, conf: ModelConfig) -> bool
     {
 
-        *self.activationFunc = match conf.activation_function {
-                Functions::ReLu => &matrix_functions::ReLu_Mat,
-                Functions::LReLu => &matrix_functions::LReLu_Mat,
-                Functions::Sigmoid => &matrix_functions::Sigmoid_Mat,
-                Functions::Tanh => &matrix_functions::Tanh_Mat,
-                Functions::Linear => &matrix_functions::Linear_Mat
+        self.activationFunc = match conf.activation_function {
+            Functions::ReLu => &matrix_functions::ReLu_Mat,
+            Functions::LReLu => &matrix_functions::LReLu_Mat,
+            Functions::Sigmoid => &matrix_functions::Sigmoid_Mat,
+            Functions::Tanh => &matrix_functions::Tanh_Mat,
+            Functions::Linear => &matrix_functions::Linear_Mat
+        };
+
+        self.hiddenLayers = conf.hidden_layers;
+        self.inputSize = conf.input_size;
+        self.outputSize = conf.output_size;
+        self.hiddenSize = conf.hidden_size;
+        self.batchSize = conf.batch_size;
+
+        
+        if(self.hiddenLayers == 0 || self.inputSize == 0 || self.outputSize == 0 || self.hiddenSize == 0 || self.batchSize == 0)
+        {
+            println!("ERROR: The following parameters can NOT be equal to zero: Hidden Layers, Input Size, Output Size, Hidden Size, Batch Size");
+
+            return false;
         }
+
+
+
+        self.isConfigured = true;
+        return true;
     }
 
     pub fn train(&self)
@@ -104,8 +137,6 @@ pub struct ModelConfig
     output_size: usize,
     hidden_size: usize,
     batch_size: usize,
-
-    cells: Vec<Cell>,
 
     num_epochs: i32
     

@@ -10,6 +10,7 @@ fn main() {
         activation_function: fourcast::Functions::Sigmoid,
         hidden_layers: 64,
         input_size: 16,
+        input_shape: 4,
         output_size: 16,
         hidden_size: 16,
         batch_size: 32,

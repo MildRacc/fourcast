@@ -50,6 +50,7 @@ pub struct LSTM {
     hiddenLayers: i32,
 
     inputSize: usize,
+    inputShape: usize,
     outputSize: usize,
     hiddenSize: usize,
     batchSize: usize,
@@ -70,6 +71,7 @@ impl LSTM {
             hiddenLayers: 0,
 
             inputSize: 0,
+            inputShape: 0,
             outputSize: 0,
             hiddenSize: 0,
             batchSize: 0,
@@ -100,13 +102,18 @@ impl LSTM {
         self.batchSize = conf.batch_size;
 
         
-        if(self.hiddenLayers == 0 || self.inputSize == 0 || self.outputSize == 0 || self.hiddenSize == 0 || self.batchSize == 0)
+        if self.hiddenLayers == 0 || self.inputSize == 0 || self.outputSize == 0 || self.hiddenSize == 0 || self.batchSize == 0
         {
             println!("ERROR: The following parameters can NOT be equal to zero: Hidden Layers, Input Size, Output Size, Hidden Size, Batch Size");
 
             return false;
         }
 
+        for _i in 0..self.hiddenLayers
+        {
+            let newCell = GruCell::new(self.hiddenSize, self.inputShape);
+            self.cells.push(newCell);
+        }
 
 
         self.isConfigured = true;
@@ -121,6 +128,8 @@ impl LSTM {
         }
 
 
+
+        println!("Training Successful");
     }
 
 
@@ -130,15 +139,16 @@ impl LSTM {
 
 pub struct ModelConfig
 {
-    activation_function: Functions,
-    hidden_layers: i32,
+    pub activation_function: Functions,
+    pub hidden_layers: i32,
 
-    input_size: usize,
-    output_size: usize,
-    hidden_size: usize,
-    batch_size: usize,
+    pub input_size: usize,
+    pub input_shape: usize,
+    pub output_size: usize,
+    pub hidden_size: usize,
+    pub batch_size: usize,
 
-    num_epochs: i32
+    pub num_epochs: i32
     
 }
 

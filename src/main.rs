@@ -7,7 +7,8 @@ fn main() {
 
     let config = fourcast::ModelConfig
     {
-        activation_function: fourcast::Functions::Logistic,
+        activation_function: fourcast::Functions::Tanh,
+        gate_function: fourcast::Functions::Logistic_Approx_16,
         hidden_layers: 64,
         input_size: 16,
         input_shape: 4,

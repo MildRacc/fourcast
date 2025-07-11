@@ -4,37 +4,66 @@
 use ndarray::{Array1, Array2};
 use rand::{random_range};
 
-pub struct GruCell {
-    w_ih: Array2<f32>,
-    w_hh: Array2<f32>,
-    b_ih: Array1<f32>,
-    b_hh: Array1<f32>,
+pub struct MGUCell {
+    // Forget
+    w_f: Array2<f32>, // Input to hidden
+    u_f: Array2<f32>, // Previous hidden to hidden
+    b_f: Array1<f32>, // Bias
 
-    h_t: Array2<f32>
+    w_h: Array2<f32>, // Input to hidden
+    u_h: Array2<f32>, // Previous hidden to hidden
+    b_h: Array1<f32>, // Bias
+
+    h_t: Array2<f32>,
+
+    activationFunction: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
+    gateFunction: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
 }
 
-impl GruCell {
-    pub fn new(hidden_size: usize, input_shape: usize) -> GruCell
+impl MGUCell {
+    pub fn new(hidden_size: usize, input_shape: usize) -> MGUCell
     {
 
-        // Weights
-        let w_ih = Array2::from_shape_fn( (3 * hidden_size, input_shape), |_| random_range(-0.1..0.1));
-        let w_hh = Array2::from_shape_fn( (3 * hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        // Forget
+        let w_f = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let u_f = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let b_f= Array1::from_shape_fn(hidden_size, |_| random_range(-0.1..0.1));
 
-        // Biases
-        let b_ih = Array1::from_shape_fn(3 * hidden_size, |_| random_range(-0.1..0.1));
-        let b_hh = Array1::from_shape_fn(3 * hidden_size, |_| random_range(-0.1..0.1));
+        // Hidden
+        let w_h = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let u_h = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let b_h= Array1::from_shape_fn(hidden_size, |_| random_range(-0.1..0.1));
 
-        let h_t = Array2::from_shape_fn( (3 * hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        // Output
+        let h_t = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
 
         Self {
-            w_ih: w_ih,
-            w_hh: w_hh,
-            b_ih: b_ih,
-            b_hh: b_hh,
+            w_f: w_f,
+            u_f: u_f,
+            b_f: b_f,
 
-            h_t: h_t
+            w_h: w_h,
+            u_h: u_h,
+            b_h: b_h,
+
+            h_t: h_t,
+
+            activationFunction: &matrix_functions::Tanh_Mat,
+            gateFunction: &matrix_functions::Logistic_Mat
         }
+    }
+
+    
+    pub fn forward(&self, input_t: &Array2<f32>, previousHidden: Array2<f32>) -> Array2<f32>
+    {
+        let forgetInput = input_t.dot(&self.w_f.t()) + previousHidden.dot(&self.u_f.t()) + &self.b_f;
+        let f_t = (self.activationFunction)(forgetInput.clone());
+
+        let forget_x_prevhidden = &f_t * &previousHidden;
+        let h_tilde_input = input_t.dot(&self.w_h.t()) + forget_x_prevhidden.t().dot(&self.u_h.t()) + self.b_h;
+        let h_tilde = (self.gateFunction)(h_tilde_input);
+
+
     }
 
     pub fn tuneParams() {
@@ -45,10 +74,10 @@ impl GruCell {
 
 
 pub struct LSTM {
-    activationFunc: &'static dyn Fn(&mut Array2<f32>),
+    activationFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
+    gateFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
 
     hiddenLayers: i32,
-
     inputSize: usize,
     inputShape: usize,
     outputSize: usize,
@@ -57,7 +86,7 @@ pub struct LSTM {
 
     epochs: usize,
 
-    cells: Vec<GruCell>,
+    cells: Vec<MGUCell>,
 
     isConfigured: bool
 }
@@ -70,6 +99,7 @@ impl LSTM {
     {
         Self {
             activationFunc: &matrix_functions::Linear_Mat,
+            gateFunc: &matrix_functions::Logistic_Mat,
             hiddenLayers: 0,
 
             inputSize: 0,
@@ -99,6 +129,14 @@ impl LSTM {
             Functions::Tanh => &matrix_functions::Tanh_Mat,
             Functions::Linear => &matrix_functions::Linear_Mat
         };
+        self.gateFunc = match conf.gate_function {
+            Functions::ReLu => &matrix_functions::ReLu_Mat,
+            Functions::LReLu => &matrix_functions::LReLu_Mat,
+            Functions::Logistic => &matrix_functions::Logistic_Mat,
+            Functions::Logistic_Approx_16 => &matrix_functions::Logistic_Approx_16_Mat,
+            Functions::Tanh => &matrix_functions::Tanh_Mat,
+            Functions::Linear => &matrix_functions::Linear_Mat
+        };
 
         self.hiddenLayers = conf.hidden_layers;
         self.inputSize = conf.input_size;
@@ -119,7 +157,7 @@ impl LSTM {
         // Populate model with cells
         for _i in 0..self.hiddenLayers
         {
-            let newCell = GruCell::new(self.hiddenSize, self.inputShape);
+            let newCell = MGUCell::new(self.hiddenSize, self.inputShape);
             self.cells.push(newCell);
         }
 
@@ -139,10 +177,15 @@ impl LSTM {
         // Actual training begins here
         for i in 0..self.epochs
         {
-
+            self.forward();
         }
 
         println!("Training Successful");
+    }
+
+    fn forward(&self)
+    {
+
     }
 
 
@@ -153,6 +196,7 @@ impl LSTM {
 pub struct ModelConfig
 {
     pub activation_function: Functions,
+    pub gate_function: Functions,
     pub hidden_layers: i32,
 
     pub input_size: usize,
@@ -180,94 +224,37 @@ pub enum Functions
 
 
 mod matrix_functions{
-    use crate::fourcast::reg_functions;
     use ndarray::{Array2};
 
-    pub fn ReLu_Mat(x: &mut Array2<f32>)
+    pub fn ReLu_Mat(mut x: Array2<f32>) -> Array2<f32>
     {
-        let iter = x.iter_mut();
-    
-        for value in iter
-        {
-            reg_functions::ReLu(value);
-        }
+        x.mapv_inplace(|v: f32| v.max(0.0));
+        x
     }
     
-    pub fn LReLu_Mat(x: &mut Array2<f32>)
+    pub fn LReLu_Mat(mut x: Array2<f32>) -> Array2<f32>
     {
-        let iter = x.iter_mut();
-    
-        for value in iter
-        {
-            reg_functions::LReLu(value);
-        }
+        x.mapv_inplace(|v: f32| v.max(v * 0.001));
+        x
     }
     
-    pub fn Logistic_Mat(x: &mut Array2<f32>)
+    pub fn Logistic_Mat(mut x: Array2<f32>) -> Array2<f32>
     {
-        let iter = x.iter_mut();
-    
-        for value in iter
-        {
-            reg_functions::Logistic(value);
-        }
+        x.mapv_inplace(|v: f32| 1.0 / (1.0 + (-v).exp()));
+        x
     }
     
-    pub fn Logistic_Approx_16_Mat(x: &mut Array2<f32>)
+    pub fn Logistic_Approx_16_Mat(mut x: Array2<f32>) -> Array2<f32>
     {
-        let iter = x.iter_mut();
-    
-        for value in iter
-        {
-            reg_functions::Logistic_Approx_16_Mat(value);
-        }
+        x.mapv_inplace(|v: f32| 1.0/(1.0 + (1.0 - f32::powi(v / 16.0, 16))));
+        x
     }
 
-    pub fn Tanh_Mat(x: &mut Array2<f32>)
+    pub fn Tanh_Mat(mut x: Array2<f32>) -> Array2<f32>
     {
-        let iter = x.iter_mut();
-    
-        for value in iter
-        {
-            reg_functions::Tanh(value);
-        }
+        x.mapv_inplace(|v: f32| v.tanh());
+        x
     }
     
-    pub fn Linear_Mat(_x: &mut Array2<f32>){}
-}
-
-mod reg_functions {
-    use std::{f32::consts::E};
-
-    #[allow(unused_assignments)]
-    pub fn ReLu(x: &mut f32)
-    {
-        *x = x.max(0.0);
-    }
-
-    #[allow(unused_assignments)]
-    pub fn LReLu(x: &mut f32)
-    {
-        *x = x.max(*x * 0.001);
-    }
-
-    #[allow(unused_assignments)]
-    pub fn Logistic(x: &mut f32)
-    {
-        *x = 1.0 / (1.0 + E.powf(-*x));
-    }
-
-    #[allow(unused_assignments)]
-    pub fn Logistic_Approx_16_Mat(x: &mut f32)
-    {
-        *x = 1.0/(1.0 + (1.0 - f32::powi(*x / 16.0, 16)));
-    }
-
-    #[allow(unused_assignments)]
-    pub fn Tanh(x: &mut f32)
-    {
-        *x = x.tanh();
-    }
-
-    pub fn Linear(_x: &mut f32){}
+    pub fn Linear_Mat(x: Array2<f32>) -> Array2<f32> {x}
 }

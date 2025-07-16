@@ -54,23 +54,24 @@ impl MGUCell {
     }
 
     
-    pub fn forward(&self, input_t: &Array2<f32>, previousHidden: Array2<f32>) -> Array2<f32>
+    pub fn forward(&mut self, input_t: &Array2<f32>) -> Array2<f32>
     {
         // Step 1: Forget Gate
-        let forgetInput = input_t.dot(&self.w_f.t()) + previousHidden.dot(&self.u_f.t()) + &self.b_f;
+        let forgetInput = input_t.dot(&self.w_f.t()) + self.h_t.dot(&self.u_f.t()) + &self.b_f;
         let f_t = (self.gateFunction)(forgetInput);
 
         // Step 2: Candidate Hidden State
-        let gated_hidden = &f_t * &previousHidden;
+        let gated_hidden = &f_t * &self.h_t;
         let candidate_input = input_t.dot(&self.w_h.t()) + gated_hidden.dot(&self.u_h.t()) + &self.b_h;
         let h_tilde = (self.activationFunction)(candidate_input);
 
         // Step 3: Final
         let complement_f = f_t.mapv(|v| 1.0 - v);
-        let h_t = (&complement_f * &previousHidden) + (&f_t * &h_tilde);
+        let output = (&complement_f * &self.h_t) + (&f_t * &h_tilde);
 
+        self.h_t = output.clone();
 
-        h_t
+        output
     }
 
     pub fn tuneParams() {
@@ -190,24 +191,22 @@ impl LSTM {
         println!("Training Successful");
     }
 
-    fn forward(&self, inputSequence: &Array3<f32>)
+    fn forward(&mut self, inputSequence: &Array3<f32>) -> Array2<f32>
     {
-        let mut hiddenState: Array2<f32> = Array2::zeros((self.batchSize, self.hiddenSize));
-
         let sequenceLength: i32 = inputSequence.shape()[1] as i32;
 
         for t in 0..sequenceLength
         {
             let x_t = inputSequence.slice(s![.., t, ..]).to_owned();
 
-            for cell in &self.cells
+            for cell in &mut self.cells
             {
-                hiddenState = cell.forward(&x_t, hiddenState);
+                let _layer_output = cell.forward(&x_t);
             }
         }
 
 
-        hiddenState
+        self.cells.last().unwrap().h_t.clone()
     }
 
     fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>) -> Array3<f32>

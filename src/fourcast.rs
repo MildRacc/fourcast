@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 
-use ndarray::{Array1, Array2};
+use ndarray::{s, Array1, Array2, Array3, ArrayBase, OwnedRepr};
 use rand::{random_range};
 
 pub struct MGUCell {
@@ -26,16 +26,16 @@ impl MGUCell {
 
         // Forget
         let w_f = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
-        let u_f = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let u_f = Array2::from_shape_fn( (hidden_size, hidden_size), |_| random_range(-0.1..0.1));
         let b_f= Array1::from_shape_fn(hidden_size, |_| random_range(-0.1..0.1));
 
         // Hidden
         let w_h = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
-        let u_h = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let u_h = Array2::from_shape_fn( (hidden_size, hidden_size), |_| random_range(-0.1..0.1));
         let b_h= Array1::from_shape_fn(hidden_size, |_| random_range(-0.1..0.1));
 
         // Output
-        let h_t = Array2::from_shape_fn( (hidden_size, input_shape), |_| random_range(-0.1..0.1));
+        let h_t = Array2::zeros((1, hidden_size));
 
         Self {
             w_f: w_f,
@@ -56,14 +56,21 @@ impl MGUCell {
     
     pub fn forward(&self, input_t: &Array2<f32>, previousHidden: Array2<f32>) -> Array2<f32>
     {
+        // Step 1: Forget Gate
         let forgetInput = input_t.dot(&self.w_f.t()) + previousHidden.dot(&self.u_f.t()) + &self.b_f;
-        let f_t = (self.activationFunction)(forgetInput.clone());
+        let f_t = (self.gateFunction)(forgetInput);
 
-        let forget_x_prevhidden = &f_t * &previousHidden;
-        let h_tilde_input = input_t.dot(&self.w_h.t()) + forget_x_prevhidden.t().dot(&self.u_h.t()) + self.b_h;
-        let h_tilde = (self.gateFunction)(h_tilde_input);
+        // Step 2: Candidate Hidden State
+        let gated_hidden = &f_t * &previousHidden;
+        let candidate_input = input_t.dot(&self.w_h.t()) + gated_hidden.dot(&self.u_h.t()) + &self.b_h;
+        let h_tilde = (self.activationFunction)(candidate_input);
+
+        // Step 3: Final
+        let complement_f = f_t.mapv(|v| 1.0 - v);
+        let h_t = (&complement_f * &previousHidden) + (&f_t * &h_tilde);
 
 
+        h_t
     }
 
     pub fn tuneParams() {
@@ -175,7 +182,7 @@ impl LSTM {
 
 
         // Actual training begins here
-        for i in 0..self.epochs
+        for _ in 0..self.epochs
         {
             self.forward();
         }
@@ -183,7 +190,27 @@ impl LSTM {
         println!("Training Successful");
     }
 
-    fn forward(&self)
+    fn forward(&self, inputSequence: &Array3<f32>)
+    {
+        let mut hiddenState: Array2<f32> = Array2::zeros((self.batchSize, self.hiddenSize));
+
+        let sequenceLength: i32 = inputSequence.shape()[1] as i32;
+
+        for t in 0..sequenceLength
+        {
+            let x_t = inputSequence.slice(s![.., t, ..]).to_owned();
+
+            for cell in &self.cells
+            {
+                hiddenState = cell.forward(&x_t, hiddenState);
+            }
+        }
+
+
+        hiddenState
+    }
+
+    fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>) -> Array3<f32>
     {
 
     }

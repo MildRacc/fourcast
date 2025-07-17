@@ -8,7 +8,8 @@ fn main() {
     let config = fourcast::ModelConfig
     {
         activation_function: fourcast::Functions::Tanh,
-        gate_function: fourcast::Functions::Logistic_Approx_16,
+        gate_function: fourcast::Functions::LogisticApprox16,
+        loss_function: fourcast::LossFunctions::MSE,
         hidden_layers: 64,
         input_size: 16,
         input_shape: 4,

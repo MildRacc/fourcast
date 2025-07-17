@@ -1,23 +1,33 @@
 #![allow(non_snake_case)]
 
 
-use ndarray::{s, Array1, Array2, Array3, ArrayBase, OwnedRepr};
+use ndarray::{s, Array1, Array2, Array3};
 use rand::{random_range};
+
+struct CellForwardCache
+{
+    previous: Array2<f32>,
+    f_t: Array2<f32>, // Forget
+    h_tilde: Array2<f32>, // Candidate
+}
 
 pub struct MGUCell {
     // Forget
-    w_f: Array2<f32>, // Input to hidden
-    u_f: Array2<f32>, // Previous hidden to hidden
+    w_f: Array2<f32>, // Input to hidden weights
+    u_f: Array2<f32>, // hidden to hidden weights
     b_f: Array1<f32>, // Bias
 
-    w_h: Array2<f32>, // Input to hidden
-    u_h: Array2<f32>, // Previous hidden to hidden
+    w_h: Array2<f32>, // Input to hidden weights
+    u_h: Array2<f32>, // hidden to hidden weight
     b_h: Array1<f32>, // Bias
 
     h_t: Array2<f32>,
 
     activationFunction: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
     gateFunction: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
+
+    cache: CellForwardCache
+
 }
 
 impl MGUCell {
@@ -49,7 +59,9 @@ impl MGUCell {
             h_t: h_t,
 
             activationFunction: &matrix_functions::Tanh_Mat,
-            gateFunction: &matrix_functions::Logistic_Mat
+            gateFunction: &matrix_functions::Logistic_Mat,
+
+            cache: CellForwardCache { f_t: (), h_tilde: () }
         }
     }
 
@@ -84,6 +96,7 @@ impl MGUCell {
 pub struct LSTM {
     activationFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
     gateFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
+    lossFunc: &'static dyn Fn(&Array2<f32>, &Array2<f32>) -> f32,
 
     hiddenLayers: i32,
     inputSize: usize,
@@ -91,6 +104,8 @@ pub struct LSTM {
     outputSize: usize,
     hiddenSize: usize,
     batchSize: usize,
+
+    learningRate: f32,
 
     epochs: usize,
 
@@ -108,6 +123,7 @@ impl LSTM {
         Self {
             activationFunc: &matrix_functions::Linear_Mat,
             gateFunc: &matrix_functions::Logistic_Mat,
+            lossFunc: &loss_functions::MSE,
             hiddenLayers: 0,
 
             inputSize: 0,
@@ -115,6 +131,8 @@ impl LSTM {
             outputSize: 0,
             hiddenSize: 0,
             batchSize: 0,
+
+            learningRate: 0.0,
 
             epochs: 0,
 
@@ -133,7 +151,7 @@ impl LSTM {
             Functions::ReLu => &matrix_functions::ReLu_Mat,
             Functions::LReLu => &matrix_functions::LReLu_Mat,
             Functions::Logistic => &matrix_functions::Logistic_Mat,
-            Functions::Logistic_Approx_16 => &matrix_functions::Logistic_Approx_16_Mat,
+            Functions::LogisticApprox16 => &matrix_functions::Logistic_Approx_16_Mat,
             Functions::Tanh => &matrix_functions::Tanh_Mat,
             Functions::Linear => &matrix_functions::Linear_Mat
         };
@@ -141,9 +159,14 @@ impl LSTM {
             Functions::ReLu => &matrix_functions::ReLu_Mat,
             Functions::LReLu => &matrix_functions::LReLu_Mat,
             Functions::Logistic => &matrix_functions::Logistic_Mat,
-            Functions::Logistic_Approx_16 => &matrix_functions::Logistic_Approx_16_Mat,
+            Functions::LogisticApprox16 => &matrix_functions::Logistic_Approx_16_Mat,
             Functions::Tanh => &matrix_functions::Tanh_Mat,
             Functions::Linear => &matrix_functions::Linear_Mat
+        };
+        self.lossFunc = match conf.loss_function {
+            LossFunctions::MSE => &loss_functions::MSE,
+            LossFunctions::RMSE => &loss_functions::RMSE,
+            LossFunctions::MAE => &loss_functions::MAE
         };
 
         self.hiddenLayers = conf.hidden_layers;
@@ -185,7 +208,7 @@ impl LSTM {
         // Actual training begins here
         for _ in 0..self.epochs
         {
-            self.forward();
+            // Forward here
         }
 
         println!("Training Successful");
@@ -209,10 +232,37 @@ impl LSTM {
         self.cells.last().unwrap().h_t.clone()
     }
 
-    fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>) -> Array3<f32>
+    fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>, cache: &CellForwardCache)
     {
+        let dl_dht;
+
+        let f_t_complement = &cache.f_t.mapv(|x| 1.0 - x);
+        let h_tilde_squared_complement = (&cache.h_tilde * &cache.h_tilde).mapv(|x| 1.0 - x);
+
+        // Calc ∂L/∂W_f
+        let dwf_pre_t: Array2<f32> = (&dl_dht * (&cache.h_tilde - &cache.previous)) * &cache.f_t * f_t_complement;
+        let dl_dwf = dwf_pre_t.t();
+
+        // Calc ∂L/∂W_h
+        let dwh_pre_t = (&dl_dht * &cache.f_t) * h_tilde_squared_complement;
+        let dl_dwh = dwh_pre_t.t();
+
+        // Calc ∂L/∂U_f
+        let duf_pre_t = (&dl_dht * &cache.f_t) * f_t_complement;
+        let dl_duf = duf_pre_t.t();
+
+        // Calc ∂L/∂U_h
+        let duh_pre_t = (&dl_dht * &cache.f_t) * h_tilde_squared_complement;
+        let dl_duh;
+
+        // Calc ∂L/∂B_f
+        let dl_dbf;
+
+        // Calc ∂L/∂B_h
+        let dl_dbh;
 
     }
+
 
 
 }
@@ -223,6 +273,7 @@ pub struct ModelConfig
 {
     pub activation_function: Functions,
     pub gate_function: Functions,
+    pub loss_function: LossFunctions,
     pub hidden_layers: i32,
 
     pub input_size: usize,
@@ -232,7 +283,6 @@ pub struct ModelConfig
     pub batch_size: usize,
 
     pub num_epochs: usize
-    
 }
 
 
@@ -242,14 +292,22 @@ pub enum Functions
     ReLu,
     LReLu,
     Logistic,
-    Logistic_Approx_16,
+    LogisticApprox16,
     Tanh,
     Linear,
 }
 
+pub enum LossFunctions
+{
+    MSE,
+    RMSE,
+    MAE,
+}
 
 
-mod matrix_functions{
+
+mod matrix_functions
+{
     use ndarray::{Array2};
 
     pub fn ReLu_Mat(mut x: Array2<f32>) -> Array2<f32>
@@ -283,4 +341,31 @@ mod matrix_functions{
     }
     
     pub fn Linear_Mat(x: Array2<f32>) -> Array2<f32> {x}
+}
+
+mod loss_functions
+{
+    use ndarray::Array2;
+
+    pub fn MSE(predictions: &Array2<f32>, targets: &Array2<f32>) -> f32
+    {
+        let diff = predictions - targets;
+        let squared = &diff * &diff;
+        squared.mean().unwrap()
+    }
+
+    pub fn RMSE(predictions: &Array2<f32>, targets: &Array2<f32>) -> f32
+    {
+        let diff = predictions - targets;
+        let squared = &diff * &diff;
+        squared.mean().unwrap().sqrt()
+    }
+
+    pub fn MAE(predictions: &Array2<f32>, targets: &Array2<f32>) -> f32
+    {
+        let diff = predictions - targets;
+        let abs_diff = diff.mapv(|v| v.abs());
+        abs_diff.mean().unwrap()
+    }
+
 }

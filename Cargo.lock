@@ -49,6 +49,8 @@ dependencies = [
  "ndarray",
  "ndarray-rand",
  "rand 0.9.2",
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -121,6 +123,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "serde",
 ]
 
 [[package]]

@@ -2,9 +2,13 @@
 
 use ndarray::{Array1, Array2, Array3, Axis, s};
 use rand::random_range;
+use serde_derive::{Serialize, Deserialize};
 
-#[derive(Clone)]
-struct CellForwardCache {
+use crate::fourcast::{loss_functions::MAE, matrix_functions::{LReLu_Mat, Linear_Mat, Logistic_Approx_16_Mat, Logistic_Mat, ReLu_Mat, Tanh_Mat}};
+
+#[derive(Clone, Serialize, Deserialize)]
+struct CellForwardCache
+{
     input: Array2<f32>,                   // Input at this timestep
     previous_h: Array2<f32>,              // Previous hidden state
     f_t: Array2<f32>,                     // Forget gate output
@@ -14,7 +18,9 @@ struct CellForwardCache {
     candidate_preactivation: Array2<f32>, // Pre-activation for candidate
 }
 
-pub struct MGUCell {
+
+pub struct MGUCell
+{
     // Forget gate parameters
     w_f: Array2<f32>, // Input to hidden weights
     u_f: Array2<f32>, // Hidden to hidden weights
@@ -33,8 +39,10 @@ pub struct MGUCell {
     cache: CellForwardCache,
 }
 
-impl MGUCell {
-    pub fn new(hidden_size: usize, input_shape: usize) -> MGUCell {
+impl MGUCell
+{
+    pub fn new(hidden_size: usize, input_shape: usize) -> MGUCell
+    {
         // Initialize weights with Xavier/Glorot initialization
         let xavier_bound = (6.0 / (input_shape + hidden_size) as f32).sqrt();
 
@@ -81,7 +89,8 @@ impl MGUCell {
         }
     }
 
-    pub fn forward(&mut self, input_t: &Array2<f32>) -> Array2<f32> {
+    pub fn forward(&mut self, input_t: &Array2<f32>) -> Array2<f32>
+    {
         let previous_h = self.h_t.clone();
 
 
@@ -108,7 +117,8 @@ impl MGUCell {
         let output = (&complement_f * &previous_h) + (&f_t * &h_tilde);
 
         // Cache forward pass data for backprop
-        self.cache = CellForwardCache {
+        self.cache = CellForwardCache
+        {
             input: input_t.clone(),
             previous_h,
             f_t: f_t.clone(),
@@ -122,20 +132,25 @@ impl MGUCell {
         output
     }
 
-    pub fn reset_hidden_state(&mut self) {
+    pub fn reset_hidden_state(&mut self)
+    {
         self.h_t.fill(0.0);
     }
 }
 
 // Forward cache for storing data needed during BPTT
-#[derive(Clone)]
-struct ForwardCache {
+#[derive(Clone, Serialize, Deserialize)]
+struct ForwardCache
+{
     inputs: Vec<Array2<f32>>,
     cell_caches: Vec<Vec<CellForwardCache>>, // [timestep][layer]
     layer_outputs: Vec<Vec<Array2<f32>>>,    // [timestep][layer]
 }
 
-pub struct LSTM {
+
+pub struct LSTM
+{
+
     activationFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
     gateFunc: &'static dyn Fn(Array2<f32>) -> Array2<f32>,
     lossFunc: &'static dyn Fn(&Array2<f32>, &Array2<f32>) -> f32,
@@ -158,9 +173,12 @@ pub struct LSTM {
     forward_cache: ForwardCache,
 }
 
-impl LSTM {
-    pub fn new() -> LSTM {
-        Self {
+impl LSTM
+{
+    pub fn new() -> LSTM
+    {
+        Self
+        {
             activationFunc: &matrix_functions::Linear_Mat,
             gateFunc: &matrix_functions::Logistic_Mat,
             lossFunc: &loss_functions::MSE,
@@ -184,23 +202,24 @@ impl LSTM {
         }
     }
 
-    pub fn configure(&mut self, conf: ModelConfig) -> bool {
+    pub fn configure(&mut self, conf: ModelConfig) -> bool
+    {
         self.activationFunc = match conf.activation_function {
-            Functions::ReLu => &matrix_functions::ReLu_Mat,
-            Functions::LReLu => &matrix_functions::LReLu_Mat,
-            Functions::Logistic => &matrix_functions::Logistic_Mat,
-            Functions::LogisticApprox16 => &matrix_functions::Logistic_Approx_16_Mat,
-            Functions::Tanh => &matrix_functions::Tanh_Mat,
-            Functions::Linear => &matrix_functions::Linear_Mat,
+            Functions::ReLu => &ReLu_Mat,
+            Functions::LReLu => &LReLu_Mat,
+            Functions::Logistic => &Logistic_Mat,
+            Functions::LogisticApprox16 => &Logistic_Approx_16_Mat,
+            Functions::Tanh => &Tanh_Mat,
+            Functions::Linear => &Linear_Mat,
         };
 
         self.gateFunc = match conf.gate_function {
-            Functions::ReLu => &matrix_functions::ReLu_Mat,
-            Functions::LReLu => &matrix_functions::LReLu_Mat,
-            Functions::Logistic => &matrix_functions::Logistic_Mat,
-            Functions::LogisticApprox16 => &matrix_functions::Logistic_Approx_16_Mat,
-            Functions::Tanh => &matrix_functions::Tanh_Mat,
-            Functions::Linear => &matrix_functions::Linear_Mat,
+            Functions::ReLu => &ReLu_Mat,
+            Functions::LReLu => &LReLu_Mat,
+            Functions::Logistic => &Logistic_Mat,
+            Functions::LogisticApprox16 => &Logistic_Approx_16_Mat,
+            Functions::Tanh => &Tanh_Mat,
+            Functions::Linear => &Linear_Mat
         };
 
         self.lossFunc = match conf.loss_function {
@@ -261,7 +280,8 @@ impl LSTM {
     ///  targetSequence: Array2<f32>
     ///     [i]:    batch   - Index of the sequence in the batch (batch size)
     ///     [i][j]: output  - Index of the output feature for that sequence (output size)
-    pub fn train(&mut self, inputSequence: &Array3<f32>, targetSequence: &Array2<f32>) {
+    pub fn train(&mut self, inputSequence: &Array3<f32>, targetSequence: &Array2<f32>)
+    {
         if !self.isConfigured {
             println!("ERROR: CANNOT TRAIN WHILE UNCONFIGURED");
             return;
@@ -292,7 +312,8 @@ impl LSTM {
 
     }
 
-    fn forward(&mut self, inputSequence: &Array3<f32>) -> Array2<f32> {
+    fn forward(&mut self, inputSequence: &Array3<f32>) -> Array2<f32>
+    {
         let sequence_length = inputSequence.shape()[1];
         let batch_size = inputSequence.shape()[0];
 
@@ -346,7 +367,8 @@ impl LSTM {
         prediction
     }
 
-    fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>) {
+    fn backward(&mut self, prediction: &Array2<f32>, target: &Array2<f32>)
+    {
         let sequence_length = self.forward_cache.inputs.len();
         let num_layers = self.cells.len();
 
@@ -410,7 +432,8 @@ impl LSTM {
         }
 
         // Apply accumulated gradients with gradient clipping
-        for (layer_idx, accumulator) in grad_accumulators.iter().enumerate() {
+        for (layer_idx, accumulator) in grad_accumulators.iter().enumerate()
+        {
             self.apply_gradients(layer_idx, accumulator);
         }
 
@@ -428,7 +451,8 @@ impl LSTM {
         cache: &CellForwardCache,
         input: &Array2<f32>,
         layer_idx: usize,
-    ) -> MGUGradients {
+    ) -> MGUGradients
+    {
 
         let cell = &self.cells[layer_idx];
 
@@ -481,7 +505,8 @@ impl LSTM {
         }
     }
 
-    fn apply_gradients(&mut self, layer_idx: usize, accumulator: &GradientAccumulator) {
+    fn apply_gradients(&mut self, layer_idx: usize, accumulator: &GradientAccumulator)
+    {
         let cell = &mut self.cells[layer_idx];
         let clip_value = 5.0; // Gradient clipping threshold
 
@@ -501,12 +526,71 @@ impl LSTM {
         cell.b_h = &cell.b_h - &(self.learningRate * &clipped_db_h);
     }
 
-    pub fn predict(&mut self, inputSequence: &Array3<f32>) -> Array2<f32> {
+    pub fn predict(&mut self, inputSequence: &Array3<f32>) -> Array2<f32>
+    {
         self.forward(inputSequence)
+    }
+
+
+    pub fn from_data(&mut self, data: LSTMData) -> Result<(), &str>
+    {
+
+        if !self.isConfigured
+        {
+            Err("Configure LSTM by using the .confugure() method before")
+        }
+
+        self.activationFunc = match data.activationFunctionID {
+            Functions::ReLu => &ReLu_Mat,
+            Functions::LReLu => &LReLu_Mat,
+            Functions::Logistic => &Logistic_Mat,
+            Functions::LogisticApprox16 => &Logistic_Approx_16_Mat,
+            Functions::Tanh => &Tanh_Mat,
+            Functions::Linear => &Linear_Mat
+        };
+        self.gateFunc = match data.gateFunctionID {
+            Functions::ReLu => &ReLu_Mat,
+            Functions::LReLu => &LReLu_Mat,
+            Functions::Logistic => &Logistic_Mat,
+            Functions::LogisticApprox16 => &Logistic_Approx_16_Mat,
+            Functions::Tanh => &Tanh_Mat,
+            Functions::Linear => &Linear_Mat
+        };
+        self.lossFunc = match data.lossFunctionID {
+            LossFunctions::MSE => &loss_functions::MSE,
+            LossFunctions::RMSE => &loss_functions::RMSE,
+            LossFunctions::MAE => &loss_functions::MAE
+        };
+
+        self.cells = data.cells;
+        self.output_weights = data.outputWeights;
+        self.output_bias = data.outputBias;
+
+        Ok(())
+
+    }
+
+    pub fn to_data(&mut self)
+    {
+
     }
 }
 
+
+struct LSTMData
+{
+    activationFunctionID: Functions,
+    gateFunctionID: Functions,
+    lossFunctionID: LossFunctions,
+
+    cells: Vec<MGUCell>,
+    outputWeights: Array2<f32>,
+    outputBias:Array1<f32>
+}
+
+
 // Helper structs for gradient computation
+#[derive(Serialize, Deserialize)]
 struct MGUGradients {
     dl_dw_f: Array2<f32>,
     dl_du_f: Array2<f32>,
@@ -518,6 +602,7 @@ struct MGUGradients {
     dl_dh_prev: Array2<f32>,
 }
 
+#[derive(Serialize, Deserialize)]
 struct GradientAccumulator {
     dw_f: Array2<f32>,
     du_f: Array2<f32>,
@@ -573,6 +658,7 @@ where
     gradients.mapv(|x| x.max(-clip_value).min(clip_value))
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct ModelConfig {
     pub activation_function: Functions,
     pub gate_function: Functions,
@@ -587,6 +673,7 @@ pub struct ModelConfig {
     pub learning_rate: f32,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum Functions {
     ReLu,
     LReLu,
@@ -596,6 +683,7 @@ pub enum Functions {
     Linear,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum LossFunctions {
     MSE,
     RMSE,

@@ -1,5 +1,9 @@
 #![allow(non_snake_case)]
 
+use dioxus_core::{fc_to_builder, IntoDynNode};
+use freya::elements::rect;
+use freya::launch::{launch_with_props};
+use freya::prelude::{component, dioxus_elements, rsx, use_signal, Element, GlobalSignal, Props, Readable, ScrollView, Writable, Input};
 use csv::Reader;
 use ndarray::{s, Array2, Array3};
 use ndarray_rand::rand::seq::SliceRandom;
@@ -15,7 +19,38 @@ const NUM_TIMESTAMPS: usize = 64;
 const NUM_FEATURES: usize = 4;
 const DATA_PATH: &str = "/home/sashad/Documents/Code/fourcast/data/MSFT.csv";
 
+
+#[derive(Clone, PartialEq)]
+struct Config
+{
+    COL_OFFSET: usize,
+    BATCH_SIZE: usize,
+    NUM_TIMESTAMPS: usize,
+    NUM_FEATURES: usize,
+    DATA_PATH: String,
+}
+
+impl Config
+{
+    fn new() -> Config
+    {
+        Config
+        {
+            COL_OFFSET: 0,
+            BATCH_SIZE: 16,
+            NUM_TIMESTAMPS: 64,
+            NUM_FEATURES: 4,
+            DATA_PATH: "~/Documents/data.csv".to_string()
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    launch_with_props(app, "4Cast", (1920.0, 1028.0));
+
+    return Ok(());
+
     println!("== FORECAST ==");
 
     let mut model = fourcast::LSTM::new();
@@ -196,4 +231,73 @@ fn normalize_data(data: &mut Vec<[f32; NUM_FEATURES]>) {
             }
         }
     }
+}
+
+
+
+#[component]
+fn ModelOption(text: String, data) -> Element
+{
+    let mut value = use_signal(String::new);
+    rsx!(
+        label { "{text}" }
+        Input {
+            value,
+            onchange: move |e| {
+                value.set(e);
+            }
+        }
+    )
+}
+
+fn app() -> Element
+{
+
+    let mut training_percent = use_signal(|| 0);
+    let mut is_training = use_signal(|| false);
+    
+    rsx!(
+        rect {
+            width: "100%",
+            height: "100%",
+            background: "#1C1C1F",
+            direction: "horizontal",
+            
+            // Settings Window
+            rect {
+                width: "35%",
+                height: "100%",
+                corner_radius: "8",
+                background: "#1C1C1F",
+                border: "0 3 0 0 center #17171D",
+
+                ScrollView {   
+                    width: "100%",
+                    height: "100%",
+
+                    for _ in 0..50 {
+                        rect {
+                            height: "50",
+                            width: "100%",
+                            background: "transparent",
+                            padding: "5",
+                            margin: "5",
+                            
+                            label { "Item" }
+                        }
+                    }
+                    
+                }
+            }
+
+            // Action Window
+            rect {
+                width: "65%",
+                height: "100%",
+                corner_radius: "8",
+                background: "#1C1C1F"
+            }
+
+        }
+    )
 }

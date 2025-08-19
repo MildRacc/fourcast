@@ -2,14 +2,18 @@
 
 use dioxus_core::{fc_to_builder, IntoDynNode};
 use freya::elements::rect;
+use freya::hooks::{theme_with, use_canvas, use_node_signal, use_platform, FontTheme, FontThemeWith, InputTheme, InputThemeWith};
 use freya::launch::{launch_with_props};
-use freya::prelude::{component, dioxus_elements, rsx, use_signal, Element, GlobalSignal, Props, Readable, ScrollView, Writable, Input};
+use freya::prelude::{component, dioxus_elements, rsx, use_signal, Checkbox, Element, GlobalSignal, Input, Props, Readable, ScrollView, Signal, Tile, Writable};
 use csv::Reader;
 use ndarray::{s, Array2, Array3};
 use ndarray_rand::rand::seq::SliceRandom;
 use ndarray_rand::rand::thread_rng;
+use skia_safe::{Color, Color4f, ColorSpace, Paint};
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::ops::Not;
 
 mod fourcast;
 
@@ -18,6 +22,7 @@ const BATCH_SIZE: usize = 87;
 const NUM_TIMESTAMPS: usize = 64;
 const NUM_FEATURES: usize = 4;
 const DATA_PATH: &str = "/home/sashad/Documents/Code/fourcast/data/MSFT.csv";
+
 
 
 #[derive(Clone, PartialEq)]
@@ -44,6 +49,9 @@ impl Config
         }
     }
 }
+
+
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -235,26 +243,177 @@ fn normalize_data(data: &mut Vec<[f32; NUM_FEATURES]>) {
 
 
 
-#[component]
-fn ModelOption(text: String, data) -> Element
+#[derive(Clone, PartialEq)]
+struct InputData
+{
+    pub value: &'static str,
+    pub valueType: ValueType
+}
+
+impl InputData
+{
+    pub fn new(val: &'static str, valType: ValueType) -> InputData
+    {
+        InputData { value: val, valueType: valType }
+    }
+}
+
+
+
+#[derive(Props, PartialEq, Clone)]
+struct ModelOptionProps
+{
+    pub text: &'static str,
+    pub data: InputData,
+    pub placeholder: &'static str,
+    pub saveto: Signal<String>
+}
+
+
+
+
+fn ModelOption(ModelOptionProps {text, data, placeholder, mut saveto}: ModelOptionProps) -> Element
 {
     let mut value = use_signal(String::new);
+    let mut checked = use_signal(|| if placeholder.to_lowercase() == "true" {true} else {false});
+    
+    
     rsx!(
-        label { "{text}" }
-        Input {
-            value,
-            onchange: move |e| {
-                value.set(e);
+        rect {
+            width: "100%",
+            padding: "5",
+            margin: "5",
+            direction: "horizontal",
+            spacing: "25",
+
+            label {
+                color: "#DBDBDF",
+                "{text}"
+            }
+            if data.valueType != ValueType::Bool {
+                Input {
+                    width: "35%",
+                    theme: theme_with!(InputTheme {
+                        background: Cow::Borrowed("#1C1C1F"),
+                        hover_background: Cow::Borrowed("#242427"),
+                        border_fill: Cow::Borrowed("#343437"),
+                        font_theme: theme_with!(FontTheme {
+                            color: Cow::Borrowed("#DADAEF")
+                        }),
+                    }),
+                    placeholder: placeholder,
+                    
+                    value,
+                    onchange: move |e: String| {
+
+                        let filtered: String;
+
+                        match data.valueType {
+                            ValueType::U32 => filtered = e.chars().filter(|c| c.is_ascii_digit()).collect(),
+                            ValueType::Float => {
+                                let mut periods: i32 = 0;
+                                filtered = e.chars().filter(|c| c.is_ascii_digit() || {
+                                    if *c == '.' && periods == 0
+                                    {
+                                        periods+=1;
+                                        true
+                                    }
+                                    else {
+                                        false
+                                    }
+                                }).collect();
+                            },
+                            _ => filtered = e
+                        }
+                        
+
+                        value.set(filtered.clone());
+                        saveto.set(filtered);
+                    }
+                }
+            }
+            else {
+                Tile {
+                    onselect: move |_| {
+                        checked.set(!{*checked.read()});                        
+                    },
+
+                    leading: rsx!(
+                        Checkbox { 
+                            selected: *checked.read_unchecked(),
+                        }
+                    )
+                }
+                
             }
         }
     )
 }
+
+
+
+struct ModelParameters
+{
+    pub colOffset: Signal<String>,
+    pub featToGraph: Signal<String>,
+    pub numFeats: Signal<String>,
+    pub batchSize: Signal<String>,
+    pub numTimestamps: Signal<String>,
+    pub dataPath: Signal<String>,
+    pub learningRate: Signal<String>,
+    pub useCyclical: Signal<String>,
+}
+impl ModelParameters {
+    pub fn new() -> ModelParameters
+    {
+        ModelParameters {
+            colOffset:  use_signal(|| String::new()),
+            featToGraph: use_signal(|| String::new()),
+            numFeats: use_signal(|| String::new()),
+            batchSize: use_signal(|| String::new()),
+            numTimestamps: use_signal(|| String::new()),
+            dataPath: use_signal(|| String::new()),
+            learningRate: use_signal(|| String::new()),
+            useCyclical: use_signal(|| String::new()),
+        }
+    }
+}
+
+
 
 fn app() -> Element
 {
 
     let mut training_percent = use_signal(|| 0);
     let mut is_training = use_signal(|| false);
+
+
+    let (reference, size) = use_node_signal();
+    let mut value = use_signal(|| 0);
+    let platform = use_platform();
+
+    let graph_canvas = use_canvas(move || {
+        let curr = value();
+        platform.invalidate_drawing_area(size.peek().area);
+        platform.request_animation_frame();
+        move |ctx| {
+            let canvas = ctx.canvas;
+            let area = ctx.area;
+
+            let clrspc_srgb = &ColorSpace::new_srgb();
+
+            let minx = area.min_x();
+            let miny = area.min_y();
+            let maxx = area.max_x();
+            let maxy = area.max_y();
+
+            canvas.draw_line((minx, maxy), (maxx, miny), &Paint::new(Color4f::new(0.5, 0.5, 0.75, 1.0), clrspc_srgb));
+            
+        }
+    });
+
+    let parameters = ModelParameters::new();
+    
     
     rsx!(
         rect {
@@ -275,17 +434,62 @@ fn app() -> Element
                     width: "100%",
                     height: "100%",
 
-                    for _ in 0..50 {
-                        rect {
-                            height: "50",
-                            width: "100%",
-                            background: "transparent",
-                            padding: "5",
-                            margin: "5",
-                            
-                            label { "Item" }
-                        }
+                    ModelOption { 
+                        text: "Column Offset",
+                        data: InputData::new("", ValueType::U32),
+                        placeholder: "0",
+                        saveto: parameters.colOffset,
                     }
+
+                    ModelOption { 
+                        text: "Feature to Graph",
+                        data: InputData::new("", ValueType::U32),
+                        placeholder: "0",
+                        saveto: parameters.featToGraph
+                    }
+
+                    ModelOption { 
+                        text: "Num Features",
+                        data: InputData::new("", ValueType::U32),
+                        placeholder: "4",
+                        saveto: parameters.numFeats,
+                    }
+
+                    ModelOption { 
+                        text: "Batch Size",
+                        data: InputData::new("", ValueType::U32),
+                        placeholder: "16",
+                        saveto: parameters.batchSize,
+                    }
+
+                    ModelOption { 
+                        text: "Num Timestamps",
+                        data: InputData::new("", ValueType::U32),
+                        placeholder: "64",
+                        saveto: parameters.numTimestamps,
+                    }
+
+                    ModelOption { 
+                        text: "Data Path",
+                        data: InputData::new("", ValueType::String),
+                        placeholder: "~/Documents/data.csv",
+                        saveto: parameters.dataPath,
+                    }
+
+                    ModelOption { 
+                        text: "Learning Rate",
+                        data: InputData::new("", ValueType::String),
+                        placeholder: "0.005",
+                        saveto: parameters.learningRate,
+                    }
+
+                    ModelOption { 
+                        text: "Use Cyclical",
+                        data: InputData::new("", ValueType::Bool),
+                        placeholder: "False",
+                        saveto: parameters.useCyclical,
+                    }
+
                     
                 }
             }
@@ -295,9 +499,58 @@ fn app() -> Element
                 width: "65%",
                 height: "100%",
                 corner_radius: "8",
-                background: "#1C1C1F"
+                background: "#1C1C1F",
+
+                direction: "vertical",
+
+                rect {
+                    width: "100%",
+                    height: "70%",
+
+                    // Canvas
+                    rect {
+                        border: "2 center red",
+
+                        padding: "5",
+                        margin: "5",
+
+                        onclick: move |_| {
+                            value += 1;
+                        },
+                        canvas_reference: graph_canvas.attribute(),
+                        reference,
+                        width: "fill",
+                        height: "fill" 
+                    }
+                }
             }
 
         }
     )
 }
+
+
+// TODO
+fn generate_graph_points(min: (u32, u32), max: (u32, u32), data: Vec<f32>)
+{
+    let (minx, miny) = min;
+    let (maxx, maxy) = max;
+
+    let domain = maxx - minx;
+    let range = maxy - miny;
+
+    let sectionSize = domain / (data.len() as u32);
+
+        
+}
+
+
+#[derive(Clone, PartialEq)]
+enum ValueType
+{
+    U32,
+    String,
+    Float,
+    Bool,
+}
+
